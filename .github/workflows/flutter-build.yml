@@ -91,7 +91,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
+          
+      - name: Replace config.rs content for custom server
+        shell: bash
+        run: |
+          CONFIG_FILE="libs/hbb_common/src/config.rs"
+          if [ -f "$CONFIG_FILE" ]; then
+            echo "Replacing content in $CONFIG_FILE..."
+            sed -i 's/rs-ny.rustdesk.com/rustdesk.moyu.ge/g' "$CONFIG_FILE"
+            sed -i 's/OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=/Nb2ABiJ9yo0Hl+NuFVqsxGelgPTcU+++2sOp8c8KL7A=/g' "$CONFIG_FILE"
+            echo "File content after replacement:"
+            cat "$CONFIG_FILE"
+          else
+            echo "Error: $CONFIG_FILE not found!"
+            exit 1
+          fi
+          
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
