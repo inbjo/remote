@@ -91,7 +91,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          
+
       - name: Replace config.rs content for custom server
         shell: bash
         run: |
@@ -107,6 +107,16 @@ jobs:
             exit 1
           fi
           
+          # Replace default API server in src/common.rs
+          COMMON_FILE="src/common.rs"
+          if [ -f "$COMMON_FILE" ]; then
+            echo "Replacing API server in $COMMON_FILE..."
+            sed -i 's|https://admin.rustdesk.com|https://rustdesk.moyu.ge|g' "$COMMON_FILE"
+            echo "API server replacement completed."
+          else
+            echo "Warning: $COMMON_FILE not found, skipping API server replacement."
+          fi
+
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
