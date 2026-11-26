@@ -195,30 +195,53 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Replace config.rs content for custom server
+      - name: Configure custom Windows server
         shell: bash
+        env:
+          RENDEZVOUS_SERVER: ${{ secrets.RENDEZVOUS_SERVER }}
+          RS_PUB_KEY: ${{ secrets.RS_PUB_KEY }}
+          API_SERVER: ${{ secrets.API_SERVER }}
         run: |
-          CONFIG_FILE="libs/hbb_common/src/config.rs"
-          if [ -f "$CONFIG_FILE" ]; then
-            echo "Replacing content in $CONFIG_FILE..."
-            sed -i 's/rs-ny.rustdesk.com/rustdesk.moyu.ge/g' "$CONFIG_FILE"
-            sed -i 's/OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=/Nb2ABiJ9yo0Hl+NuFVqsxGelgPTcU+++2sOp8c8KL7A=/g' "$CONFIG_FILE"
-            echo "File content after replacement:"
-            cat "$CONFIG_FILE"
-          else
-            echo "Error: $CONFIG_FILE not found!"
-            exit 1
-          fi
-          
-          # Replace default API server in src/common.rs
-          COMMON_FILE="src/common.rs"
-          if [ -f "$COMMON_FILE" ]; then
-            echo "Replacing API server in $COMMON_FILE..."
-            sed -i 's|https://admin.rustdesk.com|https://rustdesk.moyu.ge|g' "$COMMON_FILE"
-            echo "API server replacement completed."
-          else
-            echo "Warning: $COMMON_FILE not found, skipping API server replacement."
-          fi
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          server, key, api = (
+              os.environ[name].strip()
+              for name in ("RENDEZVOUS_SERVER", "RS_PUB_KEY", "API_SERVER")
+          )
+          if not (server or key or api) and os.environ["UPLOAD_ARTIFACT"] == "false":
+              raise SystemExit(0)
+          if not (server and key):
+              raise SystemExit("Set both RENDEZVOUS_SERVER and RS_PUB_KEY in Actions secrets.")
+          if any(re.search(r"[^\x21-\x7e]", value) for value in (server, key, api)):
+              raise SystemExit("Server settings must use printable ASCII without whitespace.")
+
+          def replace_value(source, path, pattern, value):
+              source, count = re.subn(
+                  pattern, lambda match: match[1] + json.dumps(value) + match[2],
+                  source, flags=re.MULTILINE,
+              )
+              if count != 1:
+                  raise SystemExit(f"Expected one server setting to match in {path}, found {count}.")
+              return source
+
+          config = Path("libs/hbb_common/src/config.rs")
+          source = config.read_bytes().decode("utf-8")
+          source = replace_value(source, config, r'^(pub const RENDEZVOUS_SERVERS: &\[&str\] = &\[)"[^"\r\n]*"(\];\r?)$', server)
+          source = replace_value(source, config, r'^(pub const RS_PUB_KEY: &str = )"[^"\r\n]*"(;\r?)$', key)
+
+          if api:
+              common = Path("src/common.rs")
+              common_source = replace_value(
+                  common.read_bytes().decode("utf-8"), common,
+                  r'^(    )"https://admin\.rustdesk\.com"(\.to_owned\(\)\r?)$', api,
+              )
+              common.write_bytes(common_source.encode("utf-8"))
+          config.write_bytes(source.encode("utf-8"))
+          PY
 
       - name: Restore bridge files
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
